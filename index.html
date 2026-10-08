@@ -1,0 +1,2081 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>回聲岩洞：消逝之境 (Echo Cavern: The Fading Girl)</title>
+  <script src="./vendor/tailwindcss.js"></script>
+  <script src="./vendor/three.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Noto+Serif+TC:wght@500;700;900&display=swap');
+
+    * {
+      user-select: none;
+      -webkit-user-select: none;
+      box-sizing: border-box;
+    }
+
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #101c23;
+      font-family: 'Noto Sans TC', sans-serif;
+    }
+
+    #gameCanvas {
+      width: 100vw;
+      height: 100vh;
+      display: block;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 18;
+      pointer-events: none;
+      background: linear-gradient(180deg, rgba(2, 9, 15, .38), transparent 25%, transparent 72%, rgba(2, 9, 15, .37));
+    }
+
+    /* Long Hair Vignette Covering Cheeks */
+    .hair-vignette {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 20;
+      transition: opacity 0.3s ease;
+      background: radial-gradient(ellipse at 50% 46%, transparent 48%, rgba(4, 9, 13, .72) 100%);
+    }
+
+    /* Hair Strands Overlay */
+    .hair-strands-left, .hair-strands-right {
+      position: absolute;
+      top: -10%;
+      bottom: -10%;
+      width: 25%;
+      pointer-events: none;
+      opacity: var(--hair-opacity, 0.2);
+      transition: opacity 0.4s ease-out, transform 0.4s ease-out;
+    }
+
+    .hair-strands-left {
+      left: 0;
+      background: linear-gradient(90deg, rgba(4, 8, 12, .95), rgba(4, 8, 12, .58) 38%, transparent 100%);
+      clip-path: polygon(0 0, 75% 0, 95% 25%, 80% 50%, 92% 75%, 70% 100%, 0 100%);
+      transform: translateX(var(--hair-offset-left, -15%));
+    }
+
+    .hair-strands-right {
+      right: 0;
+      background: linear-gradient(270deg, rgba(4, 8, 12, .95), rgba(4, 8, 12, .58) 38%, transparent 100%);
+      clip-path: polygon(25% 0, 100% 0, 100% 100%, 30% 100%, 8% 75%, 20% 50%, 5% 25%);
+      transform: translateX(var(--hair-offset-right, 15%));
+    }
+
+    .glass-card {
+      background: linear-gradient(145deg, rgba(20, 37, 43, .86), rgba(10, 20, 27, .79));
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(180, 230, 220, .18);
+      box-shadow: 0 12px 34px rgba(0, 0, 0, .22), inset 0 1px rgba(255, 255, 255, .07);
+    }
+
+    #startScreen { background: radial-gradient(ellipse at 50% 35%, rgba(17, 64, 69, .72), rgba(3, 10, 16, .94) 72%); }
+    #startScreen > div { background: linear-gradient(145deg, rgba(24, 45, 51, .95), rgba(8, 20, 29, .95)); border-color: rgba(93, 218, 186, .35); max-height: 92vh; overflow: auto; }
+    #startScreen h1, #gameOverScreen h2 { font-family: 'Noto Serif TC', serif; }
+    #crosshair { filter: drop-shadow(0 0 7px #8bfff0); }
+    #notificationBanner { min-width: 280px; }
+    #presenceBar { background: linear-gradient(90deg, #f9aa69, #f2d587 38%, #63e2be 72%, #a5f8de); }
+    #pickupHint {
+      position: fixed;
+      left: 50%;
+      bottom: 92px;
+      transform: translateX(-50%);
+      z-index: 31;
+      padding: 9px 16px;
+      border-radius: 999px;
+      color: #d5fff0;
+      font-size: 12px;
+      letter-spacing: .06em;
+      white-space: nowrap;
+      opacity: 0;
+      transition: opacity .2s;
+      pointer-events: none;
+    }
+    #pickupHint.visible { opacity: 1; }
+    #storyCaption {
+      position: fixed;
+      left: 50%;
+      bottom: 118px;
+      transform: translate(-50%, 12px);
+      z-index: 32;
+      width: min(610px, 86vw);
+      padding: 16px 22px;
+      border-left: 3px solid #f1c986;
+      border-radius: 14px;
+      color: #f9f4e8;
+      text-align: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .35s, transform .35s;
+    }
+    #storyCaption.visible { opacity: 1; transform: translate(-50%, 0); }
+    #storyCaption .eyebrow { color: #f1c986; font-size: 11px; letter-spacing: .22em; margin-bottom: 5px; }
+    #storyCaption p { font: 500 15px/1.75 'Noto Serif TC', serif; margin: 0; }
+    #minimapPanel {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      z-index: 31;
+      width: 190px;
+      height: 190px;
+      padding: 10px;
+      border-radius: 18px;
+      pointer-events: none;
+    }
+    #minimapCanvas { display: block; width: 100%; height: 100%; border-radius: 12px; }
+    #minimapTitle {
+      position: absolute;
+      left: 18px;
+      top: 14px;
+      color: rgba(211, 255, 244, .78);
+      font-size: 10px;
+      letter-spacing: .12em;
+      text-shadow: 0 1px 4px rgba(0,0,0,.8);
+    }
+    #endingScreen { background: radial-gradient(ellipse at 50% 22%, rgba(255, 221, 157, .93), rgba(34, 57, 58, .98) 75%); }
+    #endingScreen .ending-card { max-height: 85vh; overflow: auto; }
+    #bossHealth { display: none; }
+    #bossHealth.visible { display: block; }
+    @media (max-width: 760px) {
+      #startScreen > div { padding: 22px; }
+      #startScreen h1 { font-size: 23px; }
+      #startScreen p { line-height: 1.6; }
+      #mobileControls { padding: 16px; }
+      #pickupHint { bottom: 138px; }
+      #storyCaption { bottom: 150px; padding: 12px 15px; }
+      #storyCaption p { font-size: 13px; }
+      #minimapPanel { right: 14px; bottom: 150px; width: 150px; height: 150px; padding: 8px; }
+      #minimapTitle { left: 14px; top: 11px; font-size: 9px; }
+    }
+  </style>
+</head>
+<body class="relative bg-black text-gray-100 select-none">
+  <!-- 3D WebGL Canvas -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- Hair Visual Overlays (Fear & Isolation) -->
+  <div id="hairVignette" class="hair-vignette opacity-20"></div>
+  <div id="hairLeft" class="hair-strands-left"></div>
+  <div id="hairRight" class="hair-strands-right"></div>
+  <div id="pickupHint" class="glass-card">靠近發光的魔法水，自動飲用</div>
+  <div id="storyCaption" class="glass-card" aria-live="polite">
+    <div id="storyChapter" class="eyebrow"></div>
+    <p id="storyLine"></p>
+  </div>
+
+  <!-- Reticle Crosshair -->
+  <div id="crosshair" class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-30 opacity-70">
+    <div class="w-3 h-3 rounded-full border border-teal-100/80 bg-teal-200/30 shadow-[0_0_12px_rgba(131,255,228,0.9)]"></div>
+  </div>
+
+  <!-- Floating Companion Badge -->
+  <div class="fixed top-5 left-5 z-30 flex items-center gap-3 glass-card px-4 py-2.5 rounded-2xl shadow-lg border-amber-900/40">
+    <div class="w-10 h-10 rounded-full bg-amber-950/70 border border-amber-500/40 flex items-center justify-center text-xl shadow-[0_0_15px_rgba(245,158,11,0.3)]">
+      🧸
+    </div>
+    <div class="flex flex-col">
+      <span class="text-xs uppercase tracking-widest text-amber-300 font-semibold">小熊守護燈</span>
+      <span id="companionStatus" class="text-xs text-amber-200/70">「我在這裡陪你，別害怕…」</span>
+    </div>
+  </div>
+
+  <div class="fixed top-28 left-5 z-30 glass-card px-3 py-2 rounded-xl border-indigo-400/20">
+    <div id="levelLabel" class="text-xs font-bold tracking-widest text-indigo-200">隧道 1 / 3</div>
+    <div id="routeLabel" class="text-[10px] text-indigo-200/70 mt-0.5">隨機路線生成中…</div>
+  </div>
+
+  <!-- Cave Minimap HUD -->
+  <div id="minimapPanel" class="glass-card">
+    <div id="minimapTitle">小地圖・隧道 1 / 3</div>
+    <canvas id="minimapCanvas" width="360" height="360"></canvas>
+  </div>
+
+  <!-- Presence Status HUD (Top Center) -->
+  <div class="fixed top-5 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center w-80 max-w-[85vw] glass-card p-3 rounded-2xl shadow-2xl">
+    <div class="w-full flex justify-between items-center text-xs tracking-wider mb-1.5 font-bold">
+      <span class="text-teal-300 flex items-center gap-1.5">
+        <span class="w-2 h-2 rounded-full bg-teal-400 animate-ping"></span>
+        存在感
+      </span>
+      <span id="presencePercentText" class="text-sm font-mono text-teal-200">100%</span>
+    </div>
+    <!-- Gauge Bar -->
+    <div class="w-full h-3 bg-gray-900/90 rounded-full overflow-hidden p-0.5 border border-white/10 relative">
+      <div id="presenceBar" class="h-full bg-gradient-to-r from-red-600 via-amber-500 to-teal-400 rounded-full transition-all duration-150 shadow-[0_0_12px_rgba(45,212,191,0.8)]" style="width: 100%;"></div>
+    </div>
+    <div id="decayWarning" class="text-[11px] text-amber-300/80 mt-1 text-center font-medium">
+      尋找綠色魔法水延緩消逝
+    </div>
+  </div>
+
+  <!-- Active Buffs Status (Top Right) -->
+  <div class="fixed top-5 right-5 z-30 flex flex-col gap-2 items-end">
+    <!-- Green Buff -->
+    <div id="buffGreen" class="glass-card px-3 py-1.5 rounded-xl border-emerald-500/30 flex items-center gap-2 opacity-30 transition-all duration-300">
+      <span class="w-3 h-3 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]"></span>
+      <div class="text-right">
+        <div class="text-xs font-bold text-emerald-300">翡翠之泉 (延緩消逝)</div>
+        <div id="timerGreen" class="text-[10px] text-emerald-200/70 font-mono">未啟用</div>
+      </div>
+    </div>
+    <!-- Yellow Buff -->
+    <div id="buffYellow" class="glass-card px-3 py-1.5 rounded-xl border-amber-500/30 flex items-center gap-2 opacity-30 transition-all duration-300">
+      <span class="w-3 h-3 rounded-full bg-amber-400 shadow-[0_0_8px_#fbbf24]"></span>
+      <div class="text-right">
+        <div class="text-xs font-bold text-amber-300">晨露迅影 (極速揮劍)</div>
+        <div id="timerYellow" class="text-[10px] text-amber-200/70 font-mono">未啟用</div>
+      </div>
+    </div>
+    <!-- Red Buff -->
+    <div id="buffRed" class="glass-card px-3 py-1.5 rounded-xl border-rose-500/30 flex items-center gap-2 opacity-30 transition-all duration-300">
+      <span class="w-3 h-3 rounded-full bg-rose-400 shadow-[0_0_8px_#f43f5e]"></span>
+      <div class="text-right">
+        <div class="text-xs font-bold text-rose-300">勇氣烈焰 (力量爆發)</div>
+        <div id="timerRed" class="text-[10px] text-rose-200/70 font-mono">未啟用</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="bossHealth" class="fixed top-40 left-1/2 -translate-x-1/2 z-30 glass-card px-4 py-2 rounded-xl w-72 max-w-[72vw]">
+    <div class="text-xs text-rose-200 mb-1 tracking-widest">恐怖芭比・冰冷面具</div>
+    <div class="h-2 rounded-full bg-rose-950/70 overflow-hidden"><div id="bossHealthBar" class="h-full bg-gradient-to-r from-rose-700 to-rose-300 transition-all duration-200" style="width:100%"></div></div>
+  </div>
+
+  <!-- In-game Notification Banner -->
+  <div id="notificationBanner" class="fixed top-24 left-1/2 -translate-x-1/2 z-30 pointer-events-none opacity-0 transition-opacity duration-300 transform scale-95 glass-card px-6 py-2 rounded-xl text-center border-teal-400/30 shadow-xl">
+    <div id="notificationTitle" class="text-sm font-bold text-teal-300">取得魔法水</div>
+    <div id="notificationDesc" class="text-xs text-gray-300">存在感獲得注入！</div>
+  </div>
+
+  <!-- Bottom Interaction Hint / Controls -->
+  <div class="fixed bottom-5 left-1/2 -translate-x-1/2 z-30 glass-card px-5 py-2 rounded-full text-xs text-gray-300 tracking-wide pointer-events-none text-center shadow-lg border-white/5 hidden md:block">
+    <span class="text-teal-300 font-semibold">W A S D</span> 行走 &nbsp;·&nbsp;
+    <span class="text-teal-300 font-semibold">滑鼠</span> 轉向 &nbsp;·&nbsp;
+    <span class="text-teal-300 font-semibold">點擊 / 空白鍵</span> 揮劍 &nbsp;·&nbsp;
+    <span class="text-amber-300 font-semibold">靠近藥水自動飲用</span>
+  </div>
+
+  <!-- Mobile Touch Controls overlay -->
+  <div id="mobileControls" class="fixed inset-0 pointer-events-none z-30 flex justify-between items-end p-6 md:hidden">
+    <!-- Virtual Joystick Pad -->
+    <div id="touchJoyZone" class="w-32 h-32 rounded-full border-2 border-teal-500/30 bg-black/30 pointer-events-auto relative flex items-center justify-center">
+      <div id="touchJoyStick" class="w-12 h-12 rounded-full bg-teal-400/40 border border-teal-300/80 pointer-events-none transition-transform duration-75"></div>
+    </div>
+    <!-- Attack Action Button -->
+    <button id="mobileAttackBtn" class="w-20 h-20 rounded-full border-2 border-rose-500/50 bg-rose-950/60 pointer-events-auto flex flex-col items-center justify-center text-rose-200 active:scale-90 transition-transform shadow-[0_0_20px_rgba(244,63,94,0.3)]">
+      <span class="text-2xl">⚔️</span>
+      <span class="text-[10px] tracking-wider font-bold">揮劍</span>
+    </button>
+  </div>
+
+  <!-- Start Overlay Screen -->
+  <div id="startScreen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md transition-opacity duration-700">
+    <div class="max-w-lg w-[90%] glass-card p-8 rounded-3xl border-teal-500/30 text-center shadow-[0_0_60px_rgba(13,148,136,0.2)]">
+      <div class="text-4xl mb-2">🧸 ⚔️ 🌫️</div>
+      <h1 class="text-2xl md:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-teal-200 via-white to-amber-200 tracking-wider mb-2">
+        回聲岩洞：消逝之境
+      </h1>
+      <p class="text-sm text-teal-300/80 mb-4 font-light">五年級・三樓走廊盡頭</p>
+      
+      <div class="text-xs text-gray-300 text-left space-y-2.5 bg-black/40 p-4 rounded-xl border border-white/5 mb-6 leading-relaxed">
+        <p>課桌椅的摩擦聲、走廊的嬉鬧與老師的話語，忽然疊成刺耳的嗡鳴。女孩低下頭，把長髮撥到臉頰兩側，心跳快得發疼。</p>
+        <p>眼前一黑，她跌入夢裡的洞穴。球鞋、外套、寫作業的小手，都像被橡皮擦一點點擦淡。</p>
+        <p>「我又快要不見了……」直到陪她長大的小熊輕輕撞了撞腳踝，胸口亮起暖橘光。右側石台上，正放著第一瓶翠綠的魔法水。</p>
+        <p class="text-teal-200">走出三道隧道。靠近魔法水會自動飲用；小熊會牽制黑霧，你要親手揮劍。</p>
+      </div>
+
+      <button id="startBtn" class="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 active:scale-95 text-white font-bold tracking-widest text-sm shadow-[0_0_25px_rgba(20,184,166,0.5)] transition duration-200">
+        抓緊小熊，踏入洞穴
+      </button>
+    </div>
+  </div>
+
+  <!-- Game Over Screen (Faded Completely) -->
+  <div id="gameOverScreen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-lg hidden transition-opacity duration-1000 opacity-0">
+    <div class="max-w-md w-[90%] glass-card p-8 rounded-3xl border-rose-500/30 text-center shadow-[0_0_70px_rgba(225,29,72,0.3)]">
+      <div class="text-5xl mb-3">🌫️</div>
+      <h2 class="text-2xl font-black text-rose-300 tracking-wider mb-2">雙手失去了形體...</h2>
+      <p class="text-xs text-gray-400 mb-6 leading-relaxed">
+        黑暗與竊竊私語吞噬了存在感，長髮完全遮住了雙眼。<br>
+        但在這場夢境裡，小熊一直緊抓著你的衣角。
+      </p>
+      <button id="retryBtn" class="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-rose-700 to-amber-700 hover:from-rose-600 hover:to-amber-600 active:scale-95 text-white font-bold tracking-widest text-sm shadow-[0_0_25px_rgba(244,63,94,0.4)] transition">
+        握緊小熊，重新站起來
+      </button>
+    </div>
+  </div>
+
+  <div id="bossScreen" class="fixed inset-0 z-40 flex items-center justify-center bg-rose-950/20 backdrop-blur-[2px] hidden pointer-events-none">
+    <div class="glass-card px-8 py-5 rounded-3xl border-rose-500/50 text-center shadow-[0_0_80px_rgba(244,63,94,0.35)]">
+      <div class="text-4xl mb-2">🪆</div>
+      <h2 class="text-2xl font-black text-rose-200 tracking-widest">恐怖芭比出現了</h2>
+      <p id="bossHint" class="text-xs text-rose-100/80 mt-2">三條隧道的盡頭，最後的恐懼正等著她。</p>
+    </div>
+  </div>
+
+  <div id="endingScreen" class="fixed inset-0 z-50 hidden flex items-center justify-center p-5">
+    <div class="ending-card glass-card max-w-xl w-full p-7 md:p-9 rounded-3xl text-slate-100 border-amber-200/50">
+      <div class="text-xs tracking-[.3em] text-amber-200 mb-3">黎明・找回存在</div>
+      <h2 class="text-2xl md:text-3xl font-black mb-5 font-serif text-amber-50">她沒有消失。</h2>
+      <div class="space-y-3 text-sm leading-8 text-amber-50/90">
+        <p>「不准欺負我的小熊！」女孩把遮住臉的長髮撩到耳後。她有影子，她有朋友，她完完整整地存在於此。</p>
+        <p>三色魔法水的光芒在劍上交融。面具啪嚓一聲碎成晶屑，刺耳的怪笑終於停了。洞頂裂開，清澈的晨光灑在泥土上。</p>
+        <p>女孩的手臂痠得發麻，像剛跑完八百公尺。她低頭看著掌心：指節泛紅，溫暖厚實，影子穩穩落在地上。</p>
+        <p>小熊一瘸一拐跑回來，她把臉埋進毛茸茸的肚子，哭了，也笑了。明天她需要好好休息；今晚，她和小熊靠自己的雙手，打贏了這場仗。</p>
+      </div>
+      <button id="playAgainBtn" class="mt-6 w-full py-3 rounded-xl bg-amber-200 text-slate-900 font-bold hover:bg-amber-100">抱緊小熊，再走一次</button>
+    </div>
+  </div>
+
+  <script>
+    // Web Audio Synthesizer for Immersive Atmospheric Sounds (No external audio files needed)
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.droneOsc = null;
+        this.droneGain = null;
+        this.heartbeatTimer = null;
+        this.isMuted = false;
+      }
+
+      init() {
+        if (this.ctx) return;
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        this.ctx = new AudioContext();
+
+        // Ambient Drone (Cavern resonance)
+        this.droneOsc = this.ctx.createOscillator();
+        this.droneOsc.type = 'sine';
+        this.droneOsc.frequency.setValueAtTime(55, this.ctx.currentTime); // Low A
+
+        const droneFilter = this.ctx.createBiquadFilter();
+        droneFilter.type = 'lowpass';
+        droneFilter.frequency.setValueAtTime(120, this.ctx.currentTime);
+
+        this.droneGain = this.ctx.createGain();
+        this.droneGain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+
+        this.droneOsc.connect(droneFilter);
+        droneFilter.connect(this.droneGain);
+        this.droneGain.connect(this.ctx.destination);
+        this.droneOsc.start();
+
+        // Whisper chatter generator (Pink noise + Bandpass modulation)
+        this.startMurmurs();
+      }
+
+      startMurmurs() {
+        if (!this.ctx) return;
+        // Periodic ghostly whisper modulation
+        setInterval(() => {
+          if (!this.ctx || this.ctx.state !== 'running') return;
+          this.playWhisper();
+        }, 3200);
+      }
+
+      playWhisper() {
+        try {
+          const bufferSize = this.ctx.sampleRate * 1.5;
+          const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let i = 0; i < bufferSize; i++) {
+            data[i] = (Math.random() * 2 - 1) * 0.05; // soft noise
+          }
+
+          const noise = this.ctx.createBufferSource();
+          noise.buffer = buffer;
+
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'bandpass';
+          filter.frequency.setValueAtTime(400 + Math.random() * 600, this.ctx.currentTime);
+          filter.Q.setValueAtTime(4.0, this.ctx.currentTime);
+
+          const gain = this.ctx.createGain();
+          gain.gain.setValueAtTime(0.01, this.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.06, this.ctx.currentTime + 0.6);
+          gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 1.4);
+
+          noise.connect(filter);
+          filter.connect(gain);
+          gain.connect(this.ctx.destination);
+          noise.start();
+        } catch(e){}
+      }
+
+      playHeartbeat(rateMultiplier = 1) {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(75, now);
+        osc.frequency.exponentialRampToValueAtTime(35, now + 0.12);
+
+        gain.gain.setValueAtTime(0.25 * Math.min(rateMultiplier, 1.8), now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.2);
+
+        // Secondary pulse
+        setTimeout(() => {
+          if (!this.ctx) return;
+          const now2 = this.ctx.currentTime;
+          const osc2 = this.ctx.createOscillator();
+          const gain2 = this.ctx.createGain();
+          osc2.type = 'triangle';
+          osc2.frequency.setValueAtTime(65, now2);
+          osc2.frequency.exponentialRampToValueAtTime(30, now2 + 0.1);
+          gain2.gain.setValueAtTime(0.18 * Math.min(rateMultiplier, 1.8), now2);
+          gain2.gain.exponentialRampToValueAtTime(0.001, now2 + 0.15);
+          osc2.connect(gain2);
+          gain2.connect(this.ctx.destination);
+          osc2.start(now2);
+          osc2.stop(now2 + 0.16);
+        }, 150);
+      }
+
+      playSwordWhoosh(speedMultiplier = 1, isRedEmpowered = false) {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const duration = 0.25 / speedMultiplier;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = isRedEmpowered ? 'sawtooth' : 'sine';
+        osc.frequency.setValueAtTime(isRedEmpowered ? 440 : 320, now);
+        osc.frequency.exponentialRampToValueAtTime(80, now + duration);
+
+        gain.gain.setValueAtTime(isRedEmpowered ? 0.35 : 0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + duration);
+      }
+
+      playPotionChime(color) {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const freqs = color === 'green' ? [523.25, 659.25, 783.99, 1046.50] :
+                      color === 'yellow' ? [587.33, 739.99, 880.00, 1174.66] :
+                      [440.00, 554.37, 659.25, 880.00];
+
+        freqs.forEach((f, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(f, now + idx * 0.08);
+
+          gain.gain.setValueAtTime(0.15, now + idx * 0.08);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.5);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + idx * 0.08);
+          osc.stop(now + idx * 0.08 + 0.55);
+        });
+      }
+    }
+
+    const sound = new SoundEngine();
+
+    const storyQueue = [];
+    let storyCurrent = null;
+    let storyUntil = 0;
+    function queueStory(chapter, line, seconds = 5) {
+      storyQueue.push({ chapter, line, seconds });
+    }
+    function interruptStory(chapter, line, seconds = 5) {
+      storyQueue.length = 0;
+      storyCurrent = null;
+      storyUntil = 0;
+      queueStory(chapter, line, seconds);
+    }
+    function updateStoryCaption(now) {
+      if (storyCurrent && now >= storyUntil) storyCurrent = null;
+      if (!storyCurrent && storyQueue.length) {
+        storyCurrent = storyQueue.shift();
+        storyUntil = now + storyCurrent.seconds * 1000;
+        document.getElementById('storyChapter').textContent = storyCurrent.chapter;
+        document.getElementById('storyLine').textContent = storyCurrent.line;
+      }
+      document.getElementById('storyCaption').classList.toggle('visible', !!storyCurrent);
+    }
+
+    // Core Game State
+    const State = {
+      isStarted: false,
+      isGameOver: false,
+      presence: 100, // 0 - 100
+      // Existence drains continuously unless the player keeps the green relay alive.
+      baseDecay: 2.5,
+      currentDecay: 2.5,
+      lastHeartbeatTime: 0,
+
+      // Sword & Combat
+      isSwinging: false,
+      swingProgress: 0,
+      baseSwingSpeed: 5.5,
+      currentSwingSpeed: 5.5,
+      attackPower: 1,
+
+      // Potion Buff Timers (seconds)
+      buffs: {
+        green: 0,   // Slows decay dramatically
+        yellow: 0,  // Fast swing speed
+        red: 0      // Attack power boost & big light
+      },
+      level: 1,
+      bossActive: false,
+      bossDefeated: false,
+      teddyAssistUntil: 0,
+      nextTeddyAssistAt: 0,
+      firstMistHelpShown: false,
+      seenCrossroad: false,
+      bossHelpShown: false,
+      bossWaveShown: false,
+      hairRevealed: false,
+      bossWaveAt: 0,
+      bossStunnedUntil: 0,
+      trioAnnounced: false,
+      lastShieldNotice: 0,
+      collected: { green: false, yellow: false, red: false }
+    };
+
+    const canvas = document.getElementById('gameCanvas');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    renderer.outputEncoding = THREE.sRGBEncoding;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0d2028);
+    scene.fog = new THREE.FogExp2(0x142b33, 0.024);
+
+    const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 150);
+    // Tunnel entrance start position
+    camera.position.set(0, 1.6, 5);
+
+    // Build tunnel segments: Entrance -> Crossroad -> Curves
+    const tunnelGroup = new THREE.Group();
+    scene.add(tunnelGroup);
+
+    // Procedural rock grain keeps the single-file prototype self-contained.
+    const grainCanvas = document.createElement('canvas');
+    grainCanvas.width = grainCanvas.height = 256;
+    const grainContext = grainCanvas.getContext('2d');
+    const grainImage = grainContext.createImageData(256, 256);
+    for (let y = 0; y < 256; y++) {
+      for (let x = 0; x < 256; x++) {
+        const broad = Math.sin(x * .065 + Math.sin(y * .035) * 2) * 16;
+        const seams = Math.sin(y * .13 + Math.sin(x * .047) * 3) * 11;
+        const speckle = (Math.random() - .5) * 34;
+        const tone = Math.max(58, Math.min(178, 114 + broad + seams + speckle));
+        const offset = (y * 256 + x) * 4;
+        grainImage.data[offset] = tone;
+        grainImage.data[offset + 1] = tone * 1.04;
+        grainImage.data[offset + 2] = tone * 1.02;
+        grainImage.data[offset + 3] = 255;
+      }
+    }
+    grainContext.putImageData(grainImage, 0, 0);
+    const rockTexture = new THREE.CanvasTexture(grainCanvas);
+    rockTexture.wrapS = rockTexture.wrapT = THREE.RepeatWrapping;
+    rockTexture.repeat.set(5, 7);
+
+    // Wall Material with rocky bumps
+    const rockMaterial = new THREE.MeshStandardMaterial({
+      color: 0x718382,
+      map: rockTexture,
+      roughness: 0.98,
+      metalness: 0,
+      flatShading: true,
+      side: THREE.BackSide
+    });
+
+    const rockDetailMaterial = new THREE.MeshStandardMaterial({
+      color: 0x334b4f, roughness: 1, flatShading: true
+    });
+
+    const floorMaterial = new THREE.MeshStandardMaterial({
+      color: 0x283c40,
+      roughness: 1,
+      metalness: 0,
+      flatShading: true
+    });
+
+    // Collision uses the same centre curves as the visible tunnel meshes.
+    const collisionPaths = [];
+    const playerColliderRadius = 1.08;
+    const endWallMaterial = new THREE.MeshStandardMaterial({
+      color: 0x273b3f, roughness: 1, flatShading: true, side: THREE.DoubleSide
+    });
+
+    function createTunnelSection(points, radius = 4.2, caps = {}) {
+      const curve = new THREE.CatmullRomCurve3(points);
+      const samples = curve.getPoints(96);
+      const segments = [];
+      for (let i = 0; i < samples.length - 1; i++) {
+        const a = samples[i];
+        const b = samples[i + 1];
+        const dx = b.x - a.x;
+        const dz = b.z - a.z;
+        segments.push({ x: a.x, z: a.z, dx, dz, lengthSq: dx * dx + dz * dz });
+      }
+      const first = segments[0];
+      const last = segments[segments.length - 1];
+      collisionPaths.push({
+        segments,
+        radius: radius - playerColliderRadius,
+        start: samples[0],
+        end: samples[samples.length - 1],
+        startTangent: { x: first.dx, z: first.dz },
+        endTangent: { x: last.dx, z: last.dz },
+        caps
+      });
+      const tubeGeo = new THREE.TubeGeometry(curve, 64, radius, 12, false);
+      const tubeMesh = new THREE.Mesh(tubeGeo, rockMaterial);
+      tubeMesh.receiveShadow = true;
+      tunnelGroup.add(tubeMesh);
+
+      for (const side of ['start', 'end']) {
+        if (!caps[side]) continue;
+        const point = side === 'start' ? samples[0] : samples[samples.length - 1];
+        const tangent = curve.getTangent(side === 'start' ? 0 : 1).normalize();
+        const wall = new THREE.Mesh(new THREE.CircleGeometry(radius, 12), endWallMaterial);
+        wall.position.copy(point);
+        wall.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tangent);
+        tunnelGroup.add(wall);
+      }
+
+      // Add bumpy stalactites along the ceiling
+      for (let i = 0; i < 15; i++) {
+        const t = Math.random();
+        const pt = curve.getPoint(t);
+        const coneGeo = new THREE.ConeGeometry(0.3 + Math.random() * 0.4, 1.5 + Math.random() * 1.5, 5);
+        const stalactite = new THREE.Mesh(coneGeo, rockDetailMaterial);
+        stalactite.position.set(pt.x + (Math.random() - 0.5) * 2, pt.y + radius * 0.7, pt.z + (Math.random() - 0.5) * 2);
+        stalactite.rotation.x = Math.PI;
+        stalactite.rotation.z = (Math.random() - 0.5) * 0.3;
+        tunnelGroup.add(stalactite);
+      }
+    }
+
+    // 1. Entrance Tunnel (Z: 10 down to -25)
+    createTunnelSection([
+      new THREE.Vector3(0, 1.6, 12),
+      new THREE.Vector3(0, 1.6, 0),
+      new THREE.Vector3(0, 1.6, -15),
+      new THREE.Vector3(0, 1.6, -30)
+    ], 4.5, { start: true });
+
+    // Three sequential exits. Each run chooses a different lateral route,
+    // so the player cannot rely on the same branch every time.
+    const routeNames = ['耳語左彎', '鏡影右岔', '無聲深井'];
+    const routeChoices = [-1.5, 0, 1.5].sort(() => Math.random() - 0.5);
+    const levelCheckpoints = [
+      { z: -38, x: routeChoices[0], reached: false },
+      { z: -62, x: 4 + routeChoices[1], reached: false },
+      { z: -82, x: -1 + routeChoices[2], reached: false }
+    ];
+    const routeBeaconGroup = new THREE.Group();
+    scene.add(routeBeaconGroup);
+
+    function createRouteBeacon(checkpoint, index) {
+      const beacon = new THREE.Group();
+      beacon.position.set(checkpoint.x, 1.5, checkpoint.z);
+      const color = index === 0 ? 0x34d399 : index === 1 ? 0xfbbf24 : 0xf43f5e;
+      const orb = new THREE.Mesh(
+        new THREE.SphereGeometry(0.22, 12, 8),
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 })
+      );
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(0.55, 0.035, 8, 24),
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.65 })
+      );
+      ring.rotation.x = Math.PI / 2;
+      beacon.add(orb, ring);
+      beacon.userData = { orb, ring, index };
+      routeBeaconGroup.add(beacon);
+    }
+    levelCheckpoints.forEach(createRouteBeacon);
+
+    // 2. The Crossroad Intersection Hub (at Z = -30)
+    const crossroadGeo = new THREE.CylinderGeometry(8, 8, 7, 16, 1, true);
+    const crossroadMesh = new THREE.Mesh(crossroadGeo, rockMaterial);
+    crossroadMesh.position.set(0, 2, -30);
+    tunnelGroup.add(crossroadMesh);
+
+    // 3. Left Turn Wing
+    createTunnelSection([
+      new THREE.Vector3(0, 1.6, -30),
+      new THREE.Vector3(-12, 1.6, -30),
+      new THREE.Vector3(-25, 1.6, -38),
+      new THREE.Vector3(-35, 1.6, -55)
+    ], 4.2, { end: true });
+
+    // 4. Right Curving Wing
+    createTunnelSection([
+      new THREE.Vector3(0, 1.6, -30),
+      new THREE.Vector3(12, 1.6, -30),
+      new THREE.Vector3(26, 1.6, -22),
+      new THREE.Vector3(42, 1.6, -28)
+    ], 4.2, { end: true });
+
+    // 5. Deep Abyss Forward Tunnel
+    createTunnelSection([
+      new THREE.Vector3(0, 1.6, -30),
+      new THREE.Vector3(0, 1.6, -45),
+      new THREE.Vector3(5, 1.6, -65),
+      new THREE.Vector3(-4, 1.6, -90)
+    ], 4.5, { end: true });
+
+    function canOccupy(x, z) {
+      // The open crossroad joins all four tunnel corridors.
+      if (Math.hypot(x, z + 30) <= 5.6) return true;
+      for (const path of collisionPaths) {
+        if (path.caps.start) {
+          const fromStartX = x - path.start.x;
+          const fromStartZ = z - path.start.z;
+          if (fromStartX * path.startTangent.x + fromStartZ * path.startTangent.z < 0) continue;
+        }
+        if (path.caps.end) {
+          const fromEndX = x - path.end.x;
+          const fromEndZ = z - path.end.z;
+          if (fromEndX * path.endTangent.x + fromEndZ * path.endTangent.z > 0) continue;
+        }
+        const limitSq = path.radius * path.radius;
+        for (const segment of path.segments) {
+          if (segment.lengthSq < 1e-8) continue;
+          const projection = Math.max(0, Math.min(1,
+            ((x - segment.x) * segment.dx + (z - segment.z) * segment.dz) / segment.lengthSq
+          ));
+          const awayX = x - (segment.x + projection * segment.dx);
+          const awayZ = z - (segment.z + projection * segment.dz);
+          if (awayX * awayX + awayZ * awayZ <= limitSq) return true;
+        }
+      }
+      return false;
+    }
+
+    function nearestCavePosition(x, z) {
+      if (canOccupy(x, z)) return { x, z };
+      let best = null;
+      for (const path of collisionPaths) {
+        for (const segment of path.segments) {
+          if (segment.lengthSq < 1e-8) continue;
+          const projection = Math.max(0, Math.min(1,
+            ((x - segment.x) * segment.dx + (z - segment.z) * segment.dz) / segment.lengthSq
+          ));
+          const centerX = segment.x + projection * segment.dx;
+          const centerZ = segment.z + projection * segment.dz;
+          const distanceSq = (x - centerX) ** 2 + (z - centerZ) ** 2;
+          if (!best || distanceSq < best.distanceSq) {
+            best = { centerX, centerZ, distanceSq, radius: path.radius };
+          }
+        }
+      }
+      if (!best) return { x: 0, z: 5 };
+      const distance = Math.sqrt(best.distanceSq);
+      if (distance < .001) return { x: best.centerX, z: best.centerZ };
+      const safeRadius = Math.max(1.6, best.radius - .08);
+      return {
+        x: best.centerX + (x - best.centerX) / distance * Math.min(distance, safeRadius),
+        z: best.centerZ + (z - best.centerZ) / distance * Math.min(distance, safeRadius)
+      };
+    }
+
+    // A readable stone walkway and pools of light establish depth in the cave.
+    const pathMaterial = new THREE.MeshStandardMaterial({ color: 0x536663, roughness: 1, flatShading: true });
+    const pathSegments = [
+      [0, 6, 7.1, 45], [0, -45, 7.1, 28], [3, -73, 7.1, 38],
+      [-15, -38, 34, 7], [15, -28, 32, 7]
+    ];
+    pathSegments.forEach(([x, z, width, length]) => {
+      const floor = new THREE.Mesh(new THREE.PlaneGeometry(width, length), floorMaterial);
+      floor.rotation.x = -Math.PI / 2;
+      floor.position.set(x, -1.83, z);
+      floor.receiveShadow = true;
+      tunnelGroup.add(floor);
+    });
+    for (let i = 0; i < 56; i++) {
+      const z = 7 - i * 1.8;
+      const x = z < -45 ? Math.sin((z + 45) * .075) * 2.5 : 0;
+      const stone = new THREE.Mesh(new THREE.DodecahedronGeometry(.42 + Math.random() * .22, 0), pathMaterial);
+      stone.position.set(x + (Math.random() - .5) * 4.2, -1.78, z);
+      stone.scale.set(1.7 + Math.random(), .12, 1.3 + Math.random() * .6);
+      tunnelGroup.add(stone);
+    }
+
+    const lampMaterial = new THREE.MeshBasicMaterial({ color: 0xffd697 });
+    const lampStations = [5, -8, -22, -35, -50, -65, -80];
+    lampStations.forEach((z, index) => {
+      const x = z < -45 ? Math.sin((z + 45) * .075) * 2.5 : 0;
+      const side = index % 2 ? -1 : 1;
+      const lamp = new THREE.Mesh(new THREE.OctahedronGeometry(.19, 0), lampMaterial);
+      lamp.position.set(x + side * 3.5, .25, z);
+      tunnelGroup.add(lamp);
+      const halo = new THREE.Mesh(
+        new THREE.SphereGeometry(.38, 12, 8),
+        new THREE.MeshBasicMaterial({ color: 0xffc57a, transparent: true, opacity: .16, depthWrite: false })
+      );
+      halo.position.copy(lamp.position);
+      tunnelGroup.add(halo);
+      const light = new THREE.PointLight(0xffc887, 1.45, 13, 1.6);
+      light.position.copy(lamp.position);
+      tunnelGroup.add(light);
+    });
+    const coolFill = new THREE.HemisphereLight(0x83b5bd, 0x1b282d, .73);
+    scene.add(coolFill);
+    const entranceLight = new THREE.DirectionalLight(0xa2d4ca, .48);
+    entranceLight.position.set(2, 9, 9);
+    scene.add(entranceLight);
+
+    // Cavern Base Ambient Crystals / Glow Flora
+    const crystalGeo = new THREE.OctahedronGeometry(0.35, 0);
+    const crystalMat = new THREE.MeshStandardMaterial({
+      color: 0x68d4c4,
+      emissive: 0x32877b,
+      emissiveIntensity: .7,
+      roughness: .3,
+      metalness: .1
+    });
+    for (let c = 0; c < 42; c++) {
+      const cr = new THREE.Mesh(crystalGeo, crystalMat);
+      const randZ = -Math.random() * 85;
+      const randX = (Math.random() < .5 ? -1 : 1) * (2.8 + Math.random() * 1.3);
+      cr.position.set(randX, -1.42, randZ);
+      cr.scale.set(.34 + Math.random() * .36, .45 + Math.random() * .7, .34 + Math.random() * .36);
+      tunnelGroup.add(cr);
+    }
+
+    const playerRig = new THREE.Group();
+    scene.add(playerRig);
+    playerRig.add(camera);
+
+    // Materials that will react to Presence (Opacity & Dissolve)
+    const armMaterial = new THREE.MeshStandardMaterial({
+      color: 0xf5cfb8,
+      roughness: 0.6,
+      transparent: true,
+      opacity: 1.0,
+      depthWrite: true
+    });
+
+    const sleeveMaterial = new THREE.MeshStandardMaterial({
+      color: 0x4f7982,
+      roughness: 0.8,
+      transparent: true,
+      opacity: 1.0
+    });
+
+    const swordMetalMat = new THREE.MeshStandardMaterial({
+      color: 0xd1d5db,
+      metalness: 0.9,
+      roughness: 0.15,
+      transparent: true,
+      opacity: 1.0
+    });
+
+    const swordGripMat = new THREE.MeshStandardMaterial({
+      color: 0x78350f,
+      roughness: 0.9,
+      transparent: true,
+      opacity: 1.0
+    });
+
+    // 1. Right Arm & Courage Sword Assembly
+    const rightArmGroup = new THREE.Group();
+    rightArmGroup.position.set(0.46, -0.55, -0.78);
+    rightArmGroup.scale.setScalar(.66);
+    camera.add(rightArmGroup);
+
+    // Arm Sleeve & Forearm
+    const sleeveGeo = new THREE.CylinderGeometry(0.08, 0.09, 0.35, 8);
+    const sleeveMesh = new THREE.Mesh(sleeveGeo, sleeveMaterial);
+    sleeveMesh.rotation.x = Math.PI / 2.6;
+    rightArmGroup.add(sleeveMesh);
+
+    const handGeo = new THREE.BoxGeometry(0.1, 0.09, 0.14);
+    const handMesh = new THREE.Mesh(handGeo, armMaterial);
+    handMesh.position.set(0, 0.05, -0.22);
+    rightArmGroup.add(handMesh);
+
+    // Courage Sword
+    const swordGroup = new THREE.Group();
+    swordGroup.position.set(0, 0.08, -0.25);
+    swordGroup.rotation.x = -Math.PI / 3;
+    swordGroup.rotation.z = -0.2;
+    rightArmGroup.add(swordGroup);
+
+    // Blade
+    const bladeGeo = new THREE.BoxGeometry(0.06, 0.75, 0.02);
+    const bladeMesh = new THREE.Mesh(bladeGeo, swordMetalMat);
+    bladeMesh.position.y = 0.42;
+    swordGroup.add(bladeMesh);
+
+    // Crossguard & Pommel
+    const guardGeo = new THREE.BoxGeometry(0.24, 0.04, 0.05);
+    const guardMesh = new THREE.Mesh(guardGeo, swordMetalMat);
+    guardMesh.position.y = 0.04;
+    swordGroup.add(guardMesh);
+
+    const gripGeo = new THREE.CylinderGeometry(0.025, 0.025, 0.16, 8);
+    const gripMesh = new THREE.Mesh(gripGeo, swordGripMat);
+    gripMesh.position.y = -0.06;
+    swordGroup.add(gripMesh);
+
+    // Slash Trail Visual Effect
+    const slashTrailGeo = new THREE.PlaneGeometry(0.8, 0.3);
+    const slashTrailMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide
+    });
+    const slashTrail = new THREE.Mesh(slashTrailGeo, slashTrailMat);
+    slashTrail.position.set(0, 0.5, 0.1);
+    slashTrail.rotation.z = Math.PI / 4;
+    swordGroup.add(slashTrail);
+
+    // 2. Left Companion: The Loyal Glowing Teddy Bear (🧸)
+    const teddyGroup = new THREE.Group();
+    teddyGroup.position.set(-0.56, -0.41, -0.85);
+    teddyGroup.scale.setScalar(.66);
+    camera.add(teddyGroup);
+
+    const teddyFurMat = new THREE.MeshStandardMaterial({
+      color: 0xb6773c, // Warm Teddy Brown
+      roughness: 0.95
+    });
+    const teddySnoutMat = new THREE.MeshStandardMaterial({
+      color: 0xd97706,
+      roughness: 0.9
+    });
+    const teddyEyeMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
+
+    // Teddy Body
+    const tBody = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10), teddyFurMat);
+    teddyGroup.add(tBody);
+
+    // Teddy Head
+    const tHead = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 10), teddyFurMat);
+    tHead.position.set(0, 0.13, 0.03);
+    teddyGroup.add(tHead);
+
+    // Ears
+    const tEarL = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 8), teddyFurMat);
+    tEarL.position.set(-0.08, 0.21, 0.03);
+    const tEarR = tEarL.clone();
+    tEarR.position.x = 0.08;
+    teddyGroup.add(tEarL, tEarR);
+
+    // Snout & Eyes
+    const tSnout = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), teddySnoutMat);
+    tSnout.position.set(0, 0.11, 0.11);
+    teddyGroup.add(tSnout);
+
+    const tEyeL = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 6), teddyEyeMat);
+    tEyeL.position.set(-0.035, 0.15, 0.11);
+    const tEyeR = tEyeL.clone();
+    tEyeR.position.x = 0.035;
+    teddyGroup.add(tEyeL, tEyeR);
+
+    // Arms hugging inward
+    // Three.js r128 has no CapsuleGeometry; a low-poly cylinder keeps the
+    // same rounded toy-like silhouette while remaining version-compatible.
+    const tArmL = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.15, 8), teddyFurMat);
+    tArmL.position.set(-0.11, 0.02, 0.06);
+    tArmL.rotation.z = -0.5;
+    tArmL.rotation.x = 0.6;
+    const tArmR = tArmL.clone();
+    tArmR.position.x = 0.11;
+    tArmR.rotation.z = 0.5;
+    teddyGroup.add(tArmL, tArmR);
+
+    // Teddy Comfort Beacon (PointLight)
+    const teddyLight = new THREE.PointLight(0xffce82, 1.35, 8, 1.5);
+    teddyLight.position.set(0, 0.1, 0.1);
+    teddyGroup.add(teddyLight);
+
+    // Cavern subtle global fill light
+    const cavernAmbient = new THREE.AmbientLight(0x779e9e, .2);
+    scene.add(cavernAmbient);
+
+    const potionList = [];
+
+    function createPotion(type, x, y, z) {
+      const pGroup = new THREE.Group();
+      pGroup.position.set(x, y, z);
+      pGroup.scale.setScalar(1.5);
+      const relayIndex = type === 'green' ? greenRelay.length : -1;
+      pGroup.userData = {
+        type,
+        active: type === 'green' ? relayIndex === 0 : true,
+        initialY: y,
+        relayIndex
+      };
+
+      let liquidColor, emissiveColor;
+      if (type === 'green') {
+        liquidColor = 0x20f2a4;
+        emissiveColor = 0x00b57c;
+      } else if (type === 'yellow') {
+        liquidColor = 0xffcd4d;
+        emissiveColor = 0xd97706;
+      } else {
+        liquidColor = 0xff6c72;
+        emissiveColor = 0xdc2626;
+      }
+
+      // Flask Glass
+      const glassMat = new THREE.MeshStandardMaterial({
+        color: liquidColor,
+        opacity: .18,
+        transparent: true,
+        roughness: .15,
+        metalness: .1,
+        depthWrite: false,
+        side: THREE.DoubleSide
+      });
+      const flaskGeo = new THREE.CylinderGeometry(0.12, 0.22, 0.45, 12);
+      const flaskMesh = new THREE.Mesh(flaskGeo, glassMat);
+      pGroup.add(flaskMesh);
+
+      // Liquid Core
+      const liquidMat = new THREE.MeshBasicMaterial({
+        color: liquidColor,
+        transparent: true,
+        opacity: .96
+      });
+      const liquidGeo = new THREE.CylinderGeometry(0.1, 0.18, 0.35, 10);
+      const liquidMesh = new THREE.Mesh(liquidGeo, liquidMat);
+      liquidMesh.position.y = -0.03;
+      pGroup.add(liquidMesh);
+
+      // Cork Stopper
+      const corkMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 });
+      const corkMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.08, 8), corkMat);
+      corkMesh.position.y = 0.25;
+      pGroup.add(corkMesh);
+
+      // Glow light around potion
+      const potionLight = new THREE.PointLight(liquidColor, 2.1, 7);
+      potionLight.position.y = 0.1;
+      pGroup.add(potionLight);
+
+      // Floating Aura Rings
+      const ringGeo = new THREE.RingGeometry(0.28, 0.32, 16);
+      const ringMat = new THREE.MeshBasicMaterial({ color: liquidColor, side: THREE.DoubleSide, transparent: true, opacity: 0.7 });
+      const auraRing = new THREE.Mesh(ringGeo, ringMat);
+      auraRing.rotation.x = Math.PI / 2;
+      pGroup.add(auraRing);
+      pGroup.userData.ring = auraRing;
+
+      const baseGlow = new THREE.Mesh(
+        new THREE.CircleGeometry(.46, 24),
+        new THREE.MeshBasicMaterial({ color: liquidColor, transparent: true, opacity: .48, side: THREE.DoubleSide, depthWrite: false })
+      );
+      baseGlow.rotation.x = -Math.PI / 2;
+      baseGlow.position.y = -.34;
+      pGroup.add(baseGlow);
+
+      const beacon = new THREE.Mesh(
+        new THREE.CylinderGeometry(.06, .2, 2.4, 12, 1, true),
+        new THREE.MeshBasicMaterial({ color: liquidColor, transparent: true, opacity: .12, side: THREE.DoubleSide, depthWrite: false })
+      );
+      beacon.position.y = 1.25;
+      pGroup.add(beacon);
+
+      scene.add(pGroup);
+      potionList.push(pGroup);
+      if (type === 'green') greenRelay.push(pGroup);
+      pGroup.visible = pGroup.userData.active;
+      return pGroup;
+    }
+
+    // Green bottles form a relay: the first is on the right at the entrance,
+    // and the next one is revealed only after it is collected.
+    const greenRelay = [];
+    createPotion('green', 2.1, 0.85, 2.4);
+
+    // Main-path placements make the three story potions discoverable in order.
+    createPotion('yellow', -1.6, 0.8, -14);
+    createPotion('green', 2.0, 0.8, -25);
+    createPotion('green', 1.0, 0.8, -47);
+    createPotion('red', 4.0, 0.8, -56);
+    createPotion('green', 3.0, 0.8, -70);
+    createPotion('yellow', -1.0, 0.8, -75);
+
+    const altar = new THREE.Group();
+    altar.position.set(4, -1.78, -56);
+    const altarStone = new THREE.MeshStandardMaterial({ color: 0x655b60, roughness: 1, flatShading: true });
+    const altarBase = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.2, .25, 8), altarStone);
+    const altarTop = new THREE.Mesh(new THREE.CylinderGeometry(.72, .9, .23, 8), altarStone);
+    altarTop.position.y = .24;
+    altar.add(altarBase, altarTop);
+    scene.add(altar);
+
+    function unlockNextGreenPotion(currentPotion) {
+      const next = greenRelay[currentPotion.userData.relayIndex + 1];
+      if (!next) return;
+      next.userData.active = true;
+      next.visible = true;
+      showBanner('下一瓶綠色魔法水已出現', '沿著洞穴繼續前進，別讓存在感歸零。');
+    }
+
+    const echoMistList = [];
+    let bossDoll = null;
+    let bossLight = null;
+    let bossCore = null;
+    let morningLight = null;
+
+    const minimapCanvas = document.getElementById('minimapCanvas');
+    const minimapContext = minimapCanvas.getContext('2d');
+    const miniMapBounds = { minX: -44, maxX: 46, minZ: -98, maxZ: 16 };
+    const miniMapPlayer = new THREE.Vector3();
+    const miniMapForward = new THREE.Vector3();
+
+    function minimapPoint(x, z) {
+      const pad = 22;
+      return {
+        x: pad + ((x - miniMapBounds.minX) / (miniMapBounds.maxX - miniMapBounds.minX)) * (360 - pad * 2),
+        y: pad + ((miniMapBounds.maxZ - z) / (miniMapBounds.maxZ - miniMapBounds.minZ)) * (360 - pad * 2)
+      };
+    }
+
+    function drawMinimap(time) {
+      const ctx = minimapContext;
+      ctx.clearRect(0, 0, 360, 360);
+      ctx.fillStyle = 'rgba(5, 14, 20, .92)';
+      ctx.fillRect(0, 0, 360, 360);
+
+      ctx.strokeStyle = 'rgba(130, 220, 204, .07)';
+      ctx.lineWidth = 1;
+      for (let i = 1; i < 6; i++) {
+        const p = i * 60;
+        ctx.beginPath(); ctx.moveTo(p, 0); ctx.lineTo(p, 360); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, p); ctx.lineTo(360, p); ctx.stroke();
+      }
+
+      // The same sampled tunnel paths used by collision, so the map matches the walls.
+      ctx.lineCap = 'round';
+      collisionPaths.forEach(path => {
+        ctx.beginPath();
+        path.segments.forEach((segment, index) => {
+          const a = minimapPoint(segment.x, segment.z);
+          const b = minimapPoint(segment.x + segment.dx, segment.z + segment.dz);
+          if (index === 0) ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+        });
+        ctx.strokeStyle = 'rgba(113, 183, 173, .42)';
+        ctx.lineWidth = 13;
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(25, 52, 57, .95)';
+        ctx.lineWidth = 7;
+        ctx.stroke();
+      });
+
+      const hub = minimapPoint(0, -30);
+      ctx.beginPath(); ctx.arc(hub.x, hub.y, 18, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(21, 83, 82, .36)'; ctx.fill();
+      ctx.strokeStyle = 'rgba(121, 241, 209, .6)'; ctx.lineWidth = 2; ctx.stroke();
+
+      levelCheckpoints.forEach((checkpoint, index) => {
+        const p = minimapPoint(checkpoint.x, checkpoint.z);
+        const color = index === 0 ? '#34d399' : index === 1 ? '#fbbf24' : '#f43f5e';
+        ctx.globalAlpha = checkpoint.reached ? .22 : 1;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+        ctx.fillStyle = color; ctx.fill();
+        ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+        ctx.globalAlpha = 1;
+      });
+
+      potionList.forEach(potion => {
+        if (!potion.userData.active) return;
+        const p = minimapPoint(potion.position.x, potion.position.z);
+        const color = potion.userData.type === 'green' ? '#34f5a5' : potion.userData.type === 'yellow' ? '#ffd34d' : '#ff6870';
+        ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+        ctx.fillStyle = color; ctx.shadowColor = color; ctx.shadowBlur = 10; ctx.fill(); ctx.shadowBlur = 0;
+      });
+
+      echoMistList.forEach(mist => {
+        if (!mist.userData.alive) return;
+        const p = minimapPoint(mist.position.x, mist.position.z);
+        ctx.beginPath(); ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(167, 129, 251, .82)'; ctx.fill();
+      });
+
+      if (State.bossActive && bossDoll && bossDoll.userData.alive) {
+        const p = minimapPoint(bossDoll.position.x, bossDoll.position.z);
+        ctx.beginPath(); ctx.arc(p.x, p.y, 9 + Math.sin(time * 5) * 2, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(244, 63, 94, .9)'; ctx.fill();
+        ctx.strokeStyle = 'rgba(255, 190, 190, .9)'; ctx.lineWidth = 2; ctx.stroke();
+      }
+
+      camera.getWorldPosition(miniMapPlayer);
+      const player = minimapPoint(miniMapPlayer.x, miniMapPlayer.z);
+      camera.getWorldDirection(miniMapForward);
+      ctx.save();
+      ctx.translate(player.x, player.y);
+      ctx.rotate(Math.atan2(miniMapForward.x, -miniMapForward.z));
+      ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(6, 7); ctx.lineTo(0, 4); ctx.lineTo(-6, 7); ctx.closePath();
+      ctx.fillStyle = '#e7fff9'; ctx.shadowColor = '#6fffe0'; ctx.shadowBlur = 12; ctx.fill(); ctx.restore();
+
+      document.getElementById('minimapTitle').textContent = State.bossActive ? '小地圖・Boss 大廳' : `小地圖・隧道 ${Math.min(State.level, 3)} / 3`;
+    }
+
+    function allStoryColorsCollected() {
+      return State.collected.green && State.collected.yellow && State.collected.red;
+    }
+
+    function restoreMissedPotionsAtFinale() {
+      const backups = {
+        green: [1.2, .8, -82.5],
+        yellow: [-.2, .8, -83.5],
+        red: [-2.0, .8, -84.5]
+      };
+      for (const [type, [x, y, z]] of Object.entries(backups)) {
+        if (State.collected[type]) continue;
+        const potion = createPotion(type, x, y, z);
+        potion.userData.active = true;
+        potion.userData.finalBackup = true;
+        potion.visible = true;
+      }
+    }
+
+    function spawnBossDoll() {
+      if (bossDoll) return;
+      bossDoll = new THREE.Group();
+      bossDoll.position.set(-2.4, -1.7, -88);
+      const skin = new THREE.MeshStandardMaterial({ color: 0xe3d7d2, roughness: .72, flatShading: true });
+      const dress = new THREE.MeshStandardMaterial({ color: 0x23202b, roughness: .9, flatShading: true });
+      const eye = new THREE.MeshBasicMaterial({ color: 0xfa4662 });
+      const head = new THREE.Mesh(new THREE.SphereGeometry(.57, 16, 12), skin);
+      head.scale.set(.87, 1.12, .82);
+      head.position.y = 3.04;
+      const body = new THREE.Mesh(new THREE.ConeGeometry(.87, 2.25, 8), dress);
+      body.position.y = 1.45;
+      bossDoll.add(head, body);
+      for (const side of [-1, 1]) {
+        const dollEye = new THREE.Mesh(new THREE.SphereGeometry(.075, 8, 6), eye);
+        dollEye.position.set(side * .21, 3.12, .47);
+        const arm = new THREE.Mesh(new THREE.CylinderGeometry(.12, .09, 1.75, 7), skin);
+        arm.position.set(side * 1.01, 1.75, 0);
+        arm.rotation.z = side * .22;
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(.12, .11, 1.05, 7), skin);
+        leg.position.set(side * .27, .48, 0);
+        bossDoll.add(dollEye, arm, leg);
+      }
+      const mouth = new THREE.Mesh(new THREE.BoxGeometry(.27, .035, .025), eye);
+      mouth.position.set(0, 2.78, .49);
+      bossCore = new THREE.Mesh(new THREE.OctahedronGeometry(.23, 0),
+        new THREE.MeshBasicMaterial({ color: 0xff6375 }));
+      bossCore.position.set(0, 1.88, .85);
+      bossDoll.add(mouth, bossCore);
+      bossDoll.userData = { hp: 9, maxHp: 9, alive: true };
+      scene.add(bossDoll);
+      bossLight = new THREE.PointLight(0xf43f5e, 2.3, 13, 1.6);
+      bossLight.position.set(0, 2.2, .7);
+      bossDoll.add(bossLight);
+      State.bossActive = true;
+      restoreMissedPotionsAtFinale();
+      State.bossWaveAt = performance.now() * .001 + 4;
+      State.nextTeddyAssistAt = performance.now() * .001 + 1.5;
+      document.getElementById('bossScreen').classList.remove('hidden');
+      document.getElementById('bossHealth').classList.add('visible');
+      document.getElementById('levelLabel').textContent = '終局 / 怪娃娃';
+      document.getElementById('routeLabel').textContent = '靠近芭比，揮劍擊碎她的面具';
+      State.presence = Math.max(45, State.presence - 14);
+      interruptStory('最後的圓形大廳', '比體育老師還高的恐怖芭比立在面前。尖叫聲像巨浪，剛恢復的手又開始閃爍。', 6);
+      if (allStoryColorsCollected()) {
+        queueStory('三色共鳴', '綠水留住形體，黃水讓手臂輕快，紅水讓短劍燃起光。小熊依然守在她身旁。', 6);
+      }
+      setTimeout(() => document.getElementById('bossScreen').classList.add('hidden'), 2600);
+    }
+
+    function updateLevelProgress() {
+      if (State.bossActive || State.level > 3) return;
+      const checkpoint = levelCheckpoints[State.level - 1];
+      const visiblePlayerPosition = camera.getWorldPosition(new THREE.Vector3());
+      const closeEnough = Math.abs(visiblePlayerPosition.x - checkpoint.x) < 3.4;
+      if (visiblePlayerPosition.z < checkpoint.z && closeEnough && !checkpoint.reached) {
+        checkpoint.reached = true;
+        if (State.level < 3) {
+          State.level += 1;
+          document.getElementById('levelLabel').textContent = `隧道 ${State.level} / 3`;
+          document.getElementById('routeLabel').textContent = `${routeNames[State.level - 1]}・出口在前方`;
+          State.presence = Math.min(100, State.presence + 16);
+          if (State.level === 2) {
+            interruptStory('第二道隧道・急彎迷宮', '小熊在前方撲擊牽制，她借著黃色魔法水的輕快手臂，沿著碎裂石橋穿過急彎。', 6);
+          } else {
+            interruptStory('第三道隧道・懸崖祭壇', '黑影越來越密。她在祭壇邊找到紅色魔法水，劍身燃起微光，存在感仍在消耗中拉鋸。', 6);
+          }
+        } else {
+          State.level = 4;
+          spawnBossDoll();
+        }
+      }
+    }
+    const mistGeo = new THREE.DodecahedronGeometry(0.4, 1);
+    const mistMat = new THREE.MeshStandardMaterial({
+      color: 0x1e1b4b,
+      emissive: 0x312e81,
+      emissiveIntensity: 0.5,
+      transparent: true,
+      opacity: 0.65,
+      wireframe: true
+    });
+
+    function spawnEcho(x, y, z) {
+      const mist = new THREE.Mesh(mistGeo, mistMat.clone());
+      mist.position.set(x, y, z);
+      mist.userData = {
+        hp: 2,
+        origY: y,
+        alive: true,
+        seed: Math.random() * 10
+      };
+      scene.add(mist);
+      echoMistList.push(mist);
+      return mist;
+    }
+
+    const goldBursts = [];
+    const goldGeometry = new THREE.OctahedronGeometry(.045, 0);
+    const goldMaterial = new THREE.MeshBasicMaterial({ color: 0xffd58c });
+    function spawnGoldBurst(position) {
+      for (let i = 0; i < 13; i++) {
+        const spark = new THREE.Mesh(goldGeometry, goldMaterial);
+        spark.position.copy(position);
+        scene.add(spark);
+        goldBursts.push({
+          spark, life: 1.1,
+          vx: (Math.random() - .5) * 4,
+          vy: 1 + Math.random() * 2,
+          vz: (Math.random() - .5) * 4
+        });
+      }
+    }
+
+    function updateTeddyAssist(time, playerPos) {
+      if (time < State.nextTeddyAssistAt) return;
+      if (State.bossActive && bossDoll && bossDoll.userData.alive) {
+        if (bossDoll.position.distanceTo(playerPos) < 11) {
+          State.teddyAssistUntil = time + 1.8;
+          State.bossStunnedUntil = time + 1.8;
+          State.nextTeddyAssistAt = time + 8;
+          if (!State.bossHelpShown) {
+            State.bossHelpShown = true;
+            interruptStory('小熊沒有放手', '小熊撲在芭比的腳踝上，短短的布手臂死死抱住關節，替她爭取揮劍的時間。', 7);
+          }
+        }
+        return;
+      }
+      const nearest = echoMistList.find(mist =>
+        mist.userData.alive && mist.position.distanceTo(playerPos) < 5 &&
+        (mist.userData.stunnedUntil || 0) < time
+      );
+      if (nearest) {
+        nearest.userData.stunnedUntil = time + 1.45;
+        State.teddyAssistUntil = time + 1.45;
+        State.nextTeddyAssistAt = time + 5;
+        if (!State.firstMistHelpShown) {
+          State.firstMistHelpShown = true;
+          interruptStory('小熊先衝了上去', '它的棉花拳頭打不散黑霧，卻把黑影撞停了一秒。「小熊小心！」女孩趁機舉起短劍。', 7);
+        }
+      }
+    }
+
+    // Spawning voice whispers along tunnels
+    spawnEcho(-0.8, 1.4, -8);
+    spawnEcho(0.7, 1.3, -18);
+    spawnEcho(-2.0, 1.5, -28);
+    spawnEcho(3.0, 1.2, -33);
+    spawnEcho(-18.0, 1.5, -42);
+    spawnEcho(22.0, 1.4, -25);
+
+    const keys = { w: false, a: false, s: false, d: false };
+    const velocity = new THREE.Vector3();
+    const moveDir = new THREE.Vector3();
+    let isPointerLocked = false;
+    let pointerLockUnavailable = false;
+    let euler = new THREE.Euler(0, 0, 0, 'YXZ');
+
+    function requestPointerLockSafe() {
+      if (!canvas.requestPointerLock || pointerLockUnavailable) return;
+      try {
+        const request = canvas.requestPointerLock();
+        if (request && typeof request.catch === 'function') {
+          request.catch(() => { pointerLockUnavailable = true; });
+        }
+      } catch (error) {
+        pointerLockUnavailable = true;
+      }
+    }
+
+    // Mouse Look via Pointer Lock
+    document.addEventListener('click', () => {
+      if (!State.isStarted || State.isGameOver) return;
+      if (!isPointerLocked && document.pointerLockElement !== canvas) {
+        if (pointerLockUnavailable) triggerSwordSwing();
+        else requestPointerLockSafe();
+      } else {
+        triggerSwordSwing();
+      }
+    });
+
+    document.addEventListener('pointerlockchange', () => {
+      isPointerLocked = document.pointerLockElement === canvas;
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isPointerLocked) return;
+      const sens = 0.0022;
+      euler.setFromQuaternion(camera.quaternion);
+      euler.y -= e.movementX * sens;
+      euler.x -= e.movementY * sens;
+      // Clamp vertical look angle
+      euler.x = Math.max(-Math.PI / 2.3, Math.min(Math.PI / 2.3, euler.x));
+      camera.quaternion.setFromEuler(euler);
+    });
+
+    window.addEventListener('keydown', (e) => {
+      const k = e.key.toLowerCase();
+      if (k === 'w' || k === 'arrowup') keys.w = true;
+      if (k === 'a' || k === 'arrowleft') keys.a = true;
+      if (k === 's' || k === 'arrowdown') keys.s = true;
+      if (k === 'd' || k === 'arrowright') keys.d = true;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        triggerSwordSwing();
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      const k = e.key.toLowerCase();
+      if (k === 'w' || k === 'arrowup') keys.w = false;
+      if (k === 'a' || k === 'arrowleft') keys.a = false;
+      if (k === 's' || k === 'arrowdown') keys.s = false;
+      if (k === 'd' || k === 'arrowright') keys.d = false;
+    });
+
+    // Touch controls for mobile
+    let touchStartPos = null;
+    const touchJoyZone = document.getElementById('touchJoyZone');
+    const touchJoyStick = document.getElementById('touchJoyStick');
+    const mobileAttackBtn = document.getElementById('mobileAttackBtn');
+
+    touchJoyZone.addEventListener('touchstart', (e) => {
+      const touch = e.touches[0];
+      const rect = touchJoyZone.getBoundingClientRect();
+      touchStartPos = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    }, { passive: true });
+
+    touchJoyZone.addEventListener('touchmove', (e) => {
+      if (!touchStartPos) return;
+      const touch = e.touches[0];
+      const dx = touch.clientX - touchStartPos.x;
+      const dy = touch.clientY - touchStartPos.y;
+      const dist = Math.hypot(dx, dy);
+      const maxDist = 45;
+      const clampedDist = Math.min(dist, maxDist);
+      const angle = Math.atan2(dy, dx);
+
+      const stickX = Math.cos(angle) * clampedDist;
+      const stickY = Math.sin(angle) * clampedDist;
+      touchJoyStick.style.transform = `translate(${stickX}px, ${stickY}px)`;
+
+      keys.w = dy < -15;
+      keys.s = dy > 15;
+      keys.a = dx < -15;
+      keys.d = dx > 15;
+    }, { passive: true });
+
+    const resetTouchStick = () => {
+      touchStartPos = null;
+      touchJoyStick.style.transform = `translate(0px, 0px)`;
+      keys.w = keys.s = keys.a = keys.d = false;
+    };
+    touchJoyZone.addEventListener('touchend', resetTouchStick);
+    touchJoyZone.addEventListener('touchcancel', resetTouchStick);
+
+    mobileAttackBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      triggerSwordSwing();
+    });
+
+    function triggerSwordSwing() {
+      if (State.isSwinging || State.isGameOver) return;
+      State.isSwinging = true;
+      State.swingProgress = 0;
+
+      const isYellowActive = State.buffs.yellow > 0;
+      const isRedActive = State.buffs.red > 0;
+      sound.playSwordWhoosh(isYellowActive ? 1.8 : 1.0, isRedActive);
+
+      // Hit detection on whispering shadows
+      checkCombatHit();
+    }
+
+    function checkCombatHit() {
+      const playerPos = camera.getWorldPosition(new THREE.Vector3());
+      const forward = new THREE.Vector3();
+      camera.getWorldDirection(forward);
+
+      const attackRange = State.buffs.red > 0 ? 4.5 : 3.0;
+      const damage = State.buffs.red > 0 || (State.bossActive && State.collected.red) ? 3 : 1;
+
+      if (State.bossActive && bossDoll && bossDoll.userData.alive) {
+        if (!allStoryColorsCollected()) {
+          const now = performance.now() * .001;
+          if (now - State.lastShieldNotice > 2) {
+            showBanner('三色魔法水尚未共鳴', '大廳入口有你錯過的魔法水，靠近它們再揮劍。');
+            State.lastShieldNotice = now;
+          }
+          return;
+        }
+        const target = bossDoll.localToWorld(new THREE.Vector3(0, 2.15, .5));
+        const toBoss = new THREE.Vector3().subVectors(target, playerPos);
+        const bossDistance = toBoss.length();
+        const bossDot = forward.dot(toBoss.normalize());
+        if (bossDistance < attackRange + 1.3 && bossDot > 0.35) {
+          const assisted = State.teddyAssistUntil > performance.now() * .001;
+          bossDoll.userData.hp = Math.max(0, bossDoll.userData.hp - damage - (assisted ? 1 : 0));
+          bossDoll.scale.setScalar(.94 + bossDoll.userData.hp / bossDoll.userData.maxHp * .06);
+          document.getElementById('bossHealthBar').style.width = `${bossDoll.userData.hp / bossDoll.userData.maxHp * 100}%`;
+          if (bossDoll.userData.hp <= 6 && !bossDoll.userData.phase2) {
+            bossDoll.userData.phase2 = true;
+            spawnEcho(-1.2, 1.2, -84).userData.bossSpawn = true;
+            spawnEcho(-3.6, 1.3, -85).userData.bossSpawn = true;
+            interruptStory('芭比・雜音分身', '「你只是個小孩子……」黑霧從她的影子裡湧出。小熊撲上去牽制，女孩握緊了短劍。', 5);
+          }
+          if (bossDoll.userData.hp <= 3 && !State.hairRevealed) {
+            State.hairRevealed = true;
+            State.presence = Math.max(State.presence, 65);
+            if (State.collected.yellow) State.buffs.yellow = Math.max(State.buffs.yellow, 12);
+            if (State.collected.red) State.buffs.red = Math.max(State.buffs.red, 12);
+            interruptStory('最後一擊', '「不准欺負我的小熊！」她把長髮撩到耳後。她有影子，有朋友，完完整整地存在於此。', 7);
+          }
+          if (bossDoll.userData.hp <= 0) {
+            bossDoll.userData.alive = false;
+            triggerVictory();
+          }
+        }
+      }
+
+      echoMistList.forEach((mist) => {
+        if (!mist.userData.alive) return;
+        const toMist = new THREE.Vector3().subVectors(mist.position, playerPos);
+        const dist = toMist.length();
+        const dot = forward.dot(toMist.normalize());
+
+        if (dist < attackRange && dot > 0.45) {
+          mist.userData.hp -= damage;
+          // Spawn sparkle reaction
+          if (mist.userData.hp <= 0) {
+            mist.userData.alive = false;
+            scene.remove(mist);
+            // Slicing fear restores a bit of existence!
+            State.presence = Math.min(100, State.presence + 14);
+            showBanner('斬斷恐懼迴聲', '用雙手擊碎了耳邊的低語！存在感 +14%');
+            spawnGoldBurst(mist.position);
+          } else {
+            mist.scale.multiplyScalar(0.75);
+          }
+        }
+      });
+    }
+
+    function triggerVictory() {
+      State.bossDefeated = true;
+      State.bossActive = false;
+      State.presence = 100;
+      State.buffs.green = State.buffs.yellow = State.buffs.red = 0;
+      bossDoll.visible = false;
+      document.getElementById('bossHealth').classList.remove('visible');
+      document.getElementById('levelLabel').textContent = '黎明・走出洞穴';
+      document.getElementById('routeLabel').textContent = '她的雙手清晰、溫暖，影子還在';
+      scene.background.setHex(0xb2c6b7);
+      scene.fog.color.setHex(0xb2c6b7);
+      scene.fog.density = .013;
+      morningLight = new THREE.SpotLight(0xffe5ab, 4.2, 42, Math.PI / 5, .8);
+      morningLight.position.set(-2, 11, -85);
+      morningLight.target.position.set(-2, -1, -88);
+      scene.add(morningLight, morningLight.target);
+      rightArmGroup.visible = false;
+      spawnGoldBurst(bossDoll.position);
+      interruptStory('晨光', '「啪嚓——！」面具碎成漫天晶屑。她累得坐倒，卻看見自己的手掌和影子都還在。', 6);
+      setTimeout(() => {
+        State.isStarted = false;
+        if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
+        document.getElementById('endingScreen').classList.remove('hidden');
+      }, 3300);
+    }
+
+    function applyPotion(type, potion) {
+      State.collected[type] = true;
+      if (type === 'green') {
+        // Green restores existence and extends survival time
+        State.presence = Math.min(100, State.presence + 45);
+        State.buffs.green = 30; // temporary breathing room, not a permanent shield
+        showBanner('翡翠之泉 (綠色魔法水)', '存在感回升！減緩消逝，下一瓶綠水在洞穴深處。');
+        if (potion.userData.relayIndex === 0) {
+          interruptStory('翠綠的第一口勇氣', '清涼流進胸口，透明的小手重新凝出形體。「我作業都還沒寫完呢，我才不要消失。」', 7);
+        }
+      } else if (type === 'yellow') {
+        State.buffs.yellow = 22; // 22 seconds of lightning swings
+        showBanner('晨露迅影 (黃色魔法水)', '揮劍速度大幅加快！冷卻時間減半');
+        interruptStory('黃色魔法水', '手臂輕盈得像能生風。小熊先撲擊牽制，她在後方揮劍補上精準的一擊。', 5);
+      } else if (type === 'red') {
+        State.buffs.red = 22; // 22 seconds of empowered slashes
+        showBanner('勇氣烈焰 (紅色魔法水)', '勇氣暴漲！攻擊判定與威力大幅增強');
+        interruptStory('懸崖邊的祭壇', '紅水像草莓果醬一樣熱烈，滾燙力量灌入雙臂，短劍燃起了微光。', 6);
+      }
+      if (State.bossActive && allStoryColorsCollected() && !State.trioAnnounced) {
+        State.trioAnnounced = true;
+        interruptStory('三色共鳴', '翡翠、晨露與勇氣的光在她手裡交融。小熊抬起頭，她把劍柄握得更緊。', 6);
+      }
+      sound.playPotionChime(type);
+    }
+
+    const bannerElem = document.getElementById('notificationBanner');
+    const bannerTitle = document.getElementById('notificationTitle');
+    const bannerDesc = document.getElementById('notificationDesc');
+    let bannerTimeout = null;
+
+    function showBanner(title, desc) {
+      clearTimeout(bannerTimeout);
+      bannerTitle.textContent = title;
+      bannerDesc.textContent = desc;
+      bannerElem.style.opacity = '1';
+      bannerElem.style.transform = 'translate(-50%, 0) scale(1)';
+
+      bannerTimeout = setTimeout(() => {
+        bannerElem.style.opacity = '0';
+        bannerElem.style.transform = 'translate(-50%, 0) scale(0.95)';
+      }, 3500);
+    }
+
+    const hairVignette = document.getElementById('hairVignette');
+    const hairLeft = document.getElementById('hairLeft');
+    const hairRight = document.getElementById('hairRight');
+    const presenceBar = document.getElementById('presenceBar');
+    const presencePercentText = document.getElementById('presencePercentText');
+
+    function updateExistenceVisuals(delta) {
+      // Decay logic: significantly reduced when green potion is active
+      const decayMult = State.buffs.green > 0 ? 0.18 : 1.0;
+      if (!State.bossDefeated) {
+        State.presence = Math.max(0, State.presence - (State.baseDecay * decayMult) * delta);
+      }
+
+      const ratio = State.presence / 100;
+
+      // 1. Hands & Sword become semi-transparent as existence fades
+      const existenceOpacity = Math.max(0.12, Math.pow(ratio, 1.3));
+      armMaterial.opacity = existenceOpacity;
+      sleeveMaterial.opacity = existenceOpacity;
+      swordMetalMat.opacity = existenceOpacity;
+      swordGripMat.opacity = existenceOpacity;
+
+      // 2. Hair strands encroach from cheek edges as fear rises (low presence)
+      const fearFactor = State.hairRevealed || State.bossDefeated ? 0 : 1.0 - ratio;
+      hairVignette.style.opacity = State.bossDefeated ? '0' : (0.2 + fearFactor * 0.8).toFixed(2);
+      document.body.style.setProperty('--hair-opacity', State.hairRevealed || State.bossDefeated ? '0' : (0.15 + fearFactor * 0.85).toFixed(2));
+      document.body.style.setProperty('--hair-offset-left', `${-15 + fearFactor * 22}%`);
+      document.body.style.setProperty('--hair-offset-right', `${15 - fearFactor * 22}%`);
+
+      // 3. HUD Updates
+      presenceBar.style.width = `${State.presence.toFixed(1)}%`;
+      presencePercentText.textContent = `${Math.ceil(State.presence)}%`;
+      const greenWarning = document.getElementById('decayWarning');
+      if (State.presence < 25) {
+        greenWarning.textContent = '存在感即將消失！立刻尋找下一瓶綠色魔法水';
+        greenWarning.className = 'text-[11px] text-rose-300 mt-1 text-center font-bold animate-pulse';
+      } else if (State.buffs.green > 0) {
+        greenWarning.textContent = `綠水效力剩餘 ${Math.ceil(State.buffs.green)} 秒・向前尋找下一瓶`;
+        greenWarning.className = 'text-[11px] text-emerald-300/90 mt-1 text-center font-medium';
+      } else {
+        greenWarning.textContent = '沒有綠水保護・存在感正在快速消退';
+        greenWarning.className = 'text-[11px] text-amber-300/90 mt-1 text-center font-medium';
+      }
+
+      // 4. Heartbeat acceleration when existence is low
+      const now = performance.now();
+      const heartbeatInterval = 400 + ratio * 800; // 400ms (fast) to 1200ms (calm)
+      if (now - State.lastHeartbeatTime > heartbeatInterval) {
+        sound.playHeartbeat(1.0 + fearFactor);
+        State.lastHeartbeatTime = now;
+      }
+
+      // Check Game Over
+      if (State.presence <= 0 && !State.isGameOver) {
+        triggerGameOver();
+      }
+    }
+
+    function triggerGameOver() {
+      State.isGameOver = true;
+      if (document.exitPointerLock) document.exitPointerLock();
+      const goScreen = document.getElementById('gameOverScreen');
+      goScreen.classList.remove('hidden');
+      setTimeout(() => { goScreen.style.opacity = '1'; }, 50);
+    }
+
+    function resetGame() {
+      State.isStarted = true;
+      State.presence = 100;
+      State.isGameOver = false;
+      State.buffs.green = 0;
+      State.buffs.yellow = 0;
+      State.buffs.red = 0;
+      State.level = 1;
+      State.bossActive = false;
+      State.bossDefeated = false;
+      State.teddyAssistUntil = 0;
+      State.nextTeddyAssistAt = 0;
+      State.firstMistHelpShown = false;
+      State.seenCrossroad = false;
+      State.bossHelpShown = false;
+      State.bossWaveShown = false;
+      State.hairRevealed = false;
+      State.bossWaveAt = 0;
+      State.bossStunnedUntil = 0;
+      State.trioAnnounced = false;
+      State.lastShieldNotice = 0;
+      State.collected = { green: false, yellow: false, red: false };
+      storyQueue.length = 0;
+      storyCurrent = null;
+      document.getElementById('storyCaption').classList.remove('visible');
+      levelCheckpoints.forEach(checkpoint => checkpoint.reached = false);
+      routeBeaconGroup.visible = true;
+      if (bossDoll) {
+        scene.remove(bossDoll);
+        bossDoll = null;
+        bossLight = null;
+        bossCore = null;
+      }
+      if (morningLight) {
+        scene.remove(morningLight, morningLight.target);
+        morningLight = null;
+      }
+      scene.background.setHex(0x0d2028);
+      scene.fog.color.setHex(0x142b33);
+      scene.fog.density = .024;
+      rightArmGroup.visible = true;
+      for (let i = echoMistList.length - 1; i >= 0; i--) {
+        if (!echoMistList[i].userData.bossSpawn) continue;
+        scene.remove(echoMistList[i]);
+        echoMistList.splice(i, 1);
+      }
+      echoMistList.forEach(mist => {
+        mist.userData.alive = true;
+        mist.userData.hp = 2;
+        mist.userData.stunnedUntil = 0;
+        mist.scale.setScalar(1);
+        if (!mist.parent) scene.add(mist);
+      });
+      goldBursts.forEach(piece => scene.remove(piece.spark));
+      goldBursts.length = 0;
+      document.getElementById('levelLabel').textContent = '隧道 1 / 3';
+      document.getElementById('routeLabel').textContent = `${routeNames[0]}・隨機路線生成完成`;
+      document.getElementById('bossScreen').classList.add('hidden');
+      document.getElementById('bossHealth').classList.remove('visible');
+      document.getElementById('bossHealthBar').style.width = '100%';
+      document.getElementById('endingScreen').classList.add('hidden');
+      playerRig.position.set(0, 0, 0);
+      camera.position.set(0, 1.6, 5);
+      euler.set(0, 0, 0);
+      camera.quaternion.set(0, 0, 0, 1);
+
+      // Re-enable the chained green relay: only the entrance bottle is live.
+      for (let i = potionList.length - 1; i >= 0; i--) {
+        const potion = potionList[i];
+        if (!potion.userData.finalBackup) continue;
+        scene.remove(potion);
+        potionList.splice(i, 1);
+        const relayPosition = greenRelay.indexOf(potion);
+        if (relayPosition >= 0) greenRelay.splice(relayPosition, 1);
+      }
+      potionList.forEach(p => {
+        p.userData.active = p.userData.type === 'green' ? p.userData.relayIndex === 0 : true;
+        p.visible = p.userData.active;
+      });
+
+      const goScreen = document.getElementById('gameOverScreen');
+      goScreen.style.opacity = '0';
+      setTimeout(() => { goScreen.classList.add('hidden'); }, 600);
+      requestPointerLockSafe();
+    }
+
+    document.getElementById('retryBtn').addEventListener('click', resetGame);
+    document.getElementById('playAgainBtn').addEventListener('click', resetGame);
+
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = Math.min(clock.getDelta(), 0.1);
+      const time = performance.now() * 0.001;
+
+      if (!State.isStarted || State.isGameOver) {
+        renderer.render(scene, camera);
+        return;
+      }
+
+      updateStoryCaption(performance.now());
+
+      // Update Buff Timers
+      ['green', 'yellow', 'red'].forEach(buffKey => {
+        if (State.buffs[buffKey] > 0) {
+          State.buffs[buffKey] = Math.max(0, State.buffs[buffKey] - delta);
+        }
+      });
+
+      // Update Buff UI Elements
+      const bGreenEl = document.getElementById('buffGreen');
+      const bYellowEl = document.getElementById('buffYellow');
+      const bRedEl = document.getElementById('buffRed');
+
+      bGreenEl.style.opacity = State.buffs.green > 0 ? '1' : '0.3';
+      document.getElementById('timerGreen').textContent = State.buffs.green > 0 ? `${Math.ceil(State.buffs.green)} 秒` : '未啟用';
+
+      bYellowEl.style.opacity = State.buffs.yellow > 0 ? '1' : '0.3';
+      document.getElementById('timerYellow').textContent = State.buffs.yellow > 0 ? `${Math.ceil(State.buffs.yellow)} 秒` : '未啟用';
+
+      bRedEl.style.opacity = State.buffs.red > 0 ? '1' : '0.3';
+      document.getElementById('timerRed').textContent = State.buffs.red > 0 ? `${Math.ceil(State.buffs.red)} 秒` : '未啟用';
+
+      // Update Existence & Visual Dissolves
+      updateExistenceVisuals(delta);
+
+      // Companion Teddy Bear Bobbing & Light Breathing
+      const teddyLunging = State.teddyAssistUntil > time;
+      teddyGroup.position.x += ((teddyLunging ? -.22 : -.56) - teddyGroup.position.x) * Math.min(1, delta * 9);
+      teddyGroup.position.z += ((teddyLunging ? -1.65 : -.85) - teddyGroup.position.z) * Math.min(1, delta * 9);
+      teddyGroup.position.y = (teddyLunging ? -.27 : -.41) + Math.sin(time * 2.8) * 0.035;
+      teddyGroup.rotation.z = Math.sin(time * 1.5) * 0.06;
+      teddyGroup.rotation.y = Math.cos(time * 1.8) * 0.05;
+      teddyLight.intensity = 1.6 + Math.sin(time * 3.5) * 0.4 + (teddyLunging ? 2 : 0);
+
+      routeBeaconGroup.children.forEach((beacon, index) => {
+        const active = !levelCheckpoints[index].reached && !State.bossActive;
+        beacon.visible = active;
+        beacon.rotation.y += delta * 0.8;
+        beacon.position.y = 1.5 + Math.sin(time * 2.2 + index) * 0.12;
+      });
+      if (bossDoll && bossDoll.userData.alive) {
+        const eyePosition = camera.getWorldPosition(new THREE.Vector3());
+        bossDoll.lookAt(eyePosition.x, bossDoll.position.y, eyePosition.z);
+        bossDoll.position.y = -1.7 + Math.sin(time * 2.4) * 0.08;
+        bossLight.intensity = State.bossStunnedUntil > time ? .8 : 1.8 + Math.sin(time * 5) * .5;
+        bossCore.scale.setScalar(1 + Math.sin(time * 7) * .16);
+        if (allStoryColorsCollected() && time >= State.bossWaveAt && eyePosition.distanceTo(bossDoll.position) < 13) {
+          if (State.bossStunnedUntil <= time) {
+            State.presence = Math.max(0, State.presence - 9);
+            sound.playHeartbeat(1.5);
+            if (!State.bossWaveShown) {
+              State.bossWaveShown = true;
+              interruptStory('尖叫聲波', '「你什麼都做不到……」聲波撕扯著她的存在感。盯住小熊爭取的空檔，靠近面具揮劍！', 6);
+            }
+            State.bossWaveAt = time + 6;
+          } else {
+            State.bossWaveAt = time + 1.3;
+          }
+        }
+      }
+
+      // Sword Swing Animation
+      if (State.isSwinging) {
+        const speed = State.buffs.yellow > 0 ? State.baseSwingSpeed * 2.0 : State.baseSwingSpeed;
+        State.swingProgress += delta * speed;
+
+        const p = State.swingProgress;
+        if (p < 0.5) {
+          // Downward-forward strike arc
+          const tArc = p / 0.5;
+          rightArmGroup.rotation.x = -Math.sin(tArc * Math.PI) * 1.1;
+          rightArmGroup.rotation.y = Math.sin(tArc * Math.PI) * 0.6;
+          swordGroup.rotation.z = -0.2 - Math.sin(tArc * Math.PI) * 1.3;
+          slashTrailMat.opacity = Math.sin(tArc * Math.PI) * 0.8;
+          slashTrailMat.color.setHex(State.buffs.red > 0 ? 0xf43f5e : (State.buffs.yellow > 0 ? 0xfbbf24 : 0xffffff));
+        } else if (p < 1.0) {
+          // Recovery back to rest pose
+          const tRec = (p - 0.5) / 0.5;
+          rightArmGroup.rotation.x *= (1 - tRec);
+          rightArmGroup.rotation.y *= (1 - tRec);
+          swordGroup.rotation.z = -0.2;
+          slashTrailMat.opacity = Math.max(0, slashTrailMat.opacity - delta * 4);
+        } else {
+          State.isSwinging = false;
+          State.swingProgress = 0;
+          rightArmGroup.rotation.set(0, 0, 0);
+          swordGroup.rotation.set(-Math.PI / 3, 0, -0.2);
+          slashTrailMat.opacity = 0;
+        }
+      } else {
+        // Gentle walking sway on right arm
+        rightArmGroup.position.y = -0.55 + Math.sin(time * 5.0) * 0.015;
+      }
+
+      // Potions Float & Pickup Checking
+      const playerPos = camera.getWorldPosition(new THREE.Vector3());
+      let nearestPotionDistance = Infinity;
+      potionList.forEach(pot => {
+        if (!pot.userData.active) return;
+        // Floating spin
+        pot.position.y = pot.userData.initialY + Math.sin(time * 3.0 + pot.position.x) * 0.12;
+        pot.rotation.y += delta * 1.8;
+        if (pot.userData.ring) pot.userData.ring.rotation.z += delta * 2.5;
+
+        // Proximity detection (approx 1.7 units)
+        const distToPlayer = pot.position.distanceTo(playerPos);
+        nearestPotionDistance = Math.min(nearestPotionDistance, distToPlayer);
+        if (distToPlayer < 1.8) {
+          pot.userData.active = false;
+          pot.visible = false;
+          applyPotion(pot.userData.type, pot);
+          if (pot.userData.type === 'green') unlockNextGreenPotion(pot);
+        }
+      });
+      document.getElementById('pickupHint').classList.toggle('visible', nearestPotionDistance < 5);
+
+      updateTeddyAssist(time, playerPos);
+
+      // Whispering Mist Oscillations
+      echoMistList.forEach(mist => {
+        if (!mist.userData.alive) return;
+        const stunned = (mist.userData.stunnedUntil || 0) > time;
+        mist.material.emissive.setHex(stunned ? 0xa7814b : 0x312e81);
+        if (!stunned) {
+          mist.position.y = mist.userData.origY + Math.sin(time * 2.0 + mist.userData.seed) * 0.2;
+          mist.rotation.x += delta * 0.8;
+          mist.rotation.y += delta * 1.1;
+          if (mist.position.distanceTo(playerPos) < 2.7) State.presence = Math.max(0, State.presence - delta * 1.25);
+        }
+      });
+
+      for (let i = goldBursts.length - 1; i >= 0; i--) {
+        const piece = goldBursts[i];
+        piece.life -= delta;
+        piece.spark.position.x += piece.vx * delta;
+        piece.spark.position.y += piece.vy * delta;
+        piece.spark.position.z += piece.vz * delta;
+        piece.vy -= delta * 4;
+        piece.spark.scale.setScalar(Math.max(.01, piece.life));
+        if (piece.life <= 0) {
+          scene.remove(piece.spark);
+          goldBursts.splice(i, 1);
+        }
+      }
+
+      // Player Movement Physics
+      const moveSpeed = 6.2;
+      moveDir.set(0, 0, 0);
+      if (keys.w) moveDir.z -= 1;
+      if (keys.s) moveDir.z += 1;
+      if (keys.a) moveDir.x -= 1;
+      if (keys.d) moveDir.x += 1;
+      moveDir.normalize();
+
+      // Transform direction based on camera yaw
+      const camYaw = camera.quaternion;
+      const flatForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camYaw);
+      flatForward.y = 0;
+      flatForward.normalize();
+
+      const flatRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camYaw);
+      flatRight.y = 0;
+      flatRight.normalize();
+
+      const worldMove = new THREE.Vector3();
+      worldMove.addScaledVector(flatForward, -moveDir.z);
+      worldMove.addScaledVector(flatRight, moveDir.x);
+      worldMove.normalize();
+
+      velocity.x = worldMove.x * moveSpeed;
+      velocity.z = worldMove.z * moveSpeed;
+
+      const eye = camera.getWorldPosition(new THREE.Vector3());
+      const stepX = velocity.x * delta;
+      const stepZ = velocity.z * delta;
+      if (canOccupy(eye.x + stepX, eye.z + stepZ)) {
+        playerRig.position.x += stepX;
+        playerRig.position.z += stepZ;
+      } else {
+        // Axis checks let the player slide along a wall instead of snagging.
+        if (canOccupy(eye.x + stepX, eye.z)) playerRig.position.x += stepX;
+        if (canOccupy(eye.x, eye.z + stepZ)) playerRig.position.z += stepZ;
+      }
+      const resolvedEye = camera.getWorldPosition(new THREE.Vector3());
+      if (!canOccupy(resolvedEye.x, resolvedEye.z)) {
+        const safePosition = nearestCavePosition(resolvedEye.x, resolvedEye.z);
+        playerRig.position.x += safePosition.x - resolvedEye.x;
+        playerRig.position.z += safePosition.z - resolvedEye.z;
+      }
+      updateLevelProgress();
+      drawMinimap(time);
+      const storyPosition = camera.getWorldPosition(new THREE.Vector3());
+      if (!State.seenCrossroad && State.level === 1 && storyPosition.z < -25) {
+        State.seenCrossroad = true;
+        queueStory('第一道隧道・十字路口', '狂風把嘲弄的話語捲成黑霧。她想後退，小熊卻先用毛茸茸的腦袋撞了上去。', 6);
+      }
+
+      // Render Scene
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    const startBtn = document.getElementById('startBtn');
+    startBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      sound.init();
+      State.isStarted = true;
+      queueStory('夢境・洞穴入口', '小熊的耳朵磨得褪色，胸口卻亮著暖橘光。右邊石台上的綠水，是她讓雙手留下來的第一步。', 7);
+      document.getElementById('routeLabel').textContent = `${routeNames[0]}・隨機路線生成完成`;
+      document.getElementById('startScreen').classList.add('opacity-0', 'pointer-events-none');
+      setTimeout(() => {
+        document.getElementById('startScreen').classList.add('hidden');
+      }, 700);
+
+      // Request lock for immediate immersion
+      requestPointerLockSafe();
+    });
+
+    // Start render loop on load
+    window.onload = function() {
+      animate();
+    };
+  </script>
+</body>
+</html>
+
